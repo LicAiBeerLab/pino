@@ -13,6 +13,8 @@ from pinokla.robot_utils import freezeJoints, freezeJointsWithoutVis
 from pinocchio.visualize import GepettoVisualizer
 from pinocchio.visualize import MeshcatVisualizer
 import meshcat
+
+
 def closedLoopInverseKinematicsProximal(
     rmodel,
     rdata,
@@ -21,7 +23,7 @@ def closedLoopInverseKinematicsProximal(
     target_pos,
     ideff,
     onlytranslation=False,
-    max_it=100,
+    max_it=250,
     eps=1e-12,
     rho=1e-10,
     mu=1e-4,
@@ -50,21 +52,24 @@ def closedLoopInverseKinematicsProximal(
     raw here (L84-126):https://gitlab.inria.fr/jucarpen/pinocchio/-/blob/pinocchio-3x/examples/simulation-closed-kinematic-chains.py
     """
 
-    model = rmodel.copy()
-    constraint_model = rconstraint_model.copy()
+    model = pin.Model(rmodel)
+    constraint_model = [pin.RigidConstraintModel(x) for x in  rconstraint_model]
     # add a contact constraint
-
+    target_SE3 = pin.SE3.Identity()
+    target_SE3.translation = np.array(target_pos[0:3])
     frame_constraint = model.frames[ideff]
     parent_joint = frame_constraint.parentJoint
     placement = frame_constraint.placement
     if onlytranslation:
-        final_constraint = pin.RigidConstraintModel(
-            pin.ContactType.CONTACT_3D, model, parent_joint, placement, 0, target_pos
-        )
+        final_constraint = pin.RigidConstraintModel(pin.ContactType.CONTACT_3D,
+                                                    model, parent_joint,
+                                                    placement, 0, target_SE3,
+                                                    pin.ReferenceFrame.WORLD)
     else:
         final_constraint = pin.RigidConstraintModel(
-            pin.ContactType.CONTACT_6D, model, parent_joint, placement, 0, target_pos
-        )
+            pin.ContactType.CONTACT_6D, model, parent_joint, placement,
+            model.getJointId("universel"), target_pos,
+            pin.ReferenceFrame.LOCAL)
     constraint_model.append(final_constraint)
 
     data = model.createData()
@@ -82,14 +87,13 @@ def closedLoopInverseKinematicsProximal(
 
     for k in range(max_it):
         pin.computeJointJacobians(model, data, q)
-        kkt_constraint.compute(model, data, constraint_model, constraint_data, mu)
+        kkt_constraint.compute(model, data, constraint_model, constraint_data,
+                               mu)
 
-        constraint_value = np.concatenate(
-            [
-                (pin.log(cd.c1Mc2).np[: cm.size()])
-                for (cd, cm) in zip(constraint_data, constraint_model)
-            ]
-        )
+        constraint_value = np.concatenate([
+            (pin.log(cd.c1Mc2).np[:cm.size()])
+            for (cd, cm) in zip(constraint_data, constraint_model)
+        ])
 
         LJ = []
         for cm, cd in zip(constraint_model, constraint_data):
@@ -98,6 +102,7 @@ def closedLoopInverseKinematicsProximal(
         J = np.concatenate(LJ)
 
         primal_feas = np.linalg.norm(constraint_value, np.inf)
+
         dual_feas = np.linalg.norm(J.T.dot(constraint_value + y), np.inf)
         if primal_feas < eps and dual_feas < eps:
             break
@@ -108,10 +113,14 @@ def closedLoopInverseKinematicsProximal(
         dy = dz[:constraint_dim]
         dq = dz[constraint_dim:]
 
-        alpha = 1.0
+        alpha = 0.5
         q = pin.integrate(model, q, -alpha * dq)
         y -= alpha * (-dy + y)
-
+        pin.framesForwardKinematics(model, data, q)
+        id_frame = model.getFrameId("link5_psedo")
+        pos_e = np.linalg.norm(data.oMf[id_frame].translation -
+                               np.array(target_pos[0:3]))
+        print(pos_e)
     return q
 
 
@@ -208,7 +217,7 @@ def ForwardK(
     eps=1e-12,
     rho=1e-10,
     mu=1e-4,
-    
+
 ):
     """
     q=proximalSolver(model,data,constraint_model,constraint_data,max_it=100,eps=1e-12,rho=1e-10,mu=1e-4)
@@ -253,7 +262,7 @@ def ForwardK(
     kkt_constraint = pin.ContactCholeskyDecomposition(
         reduced_model, reduced_constraint_models
     )
-    
+
     for k in range(max_it):
         pin.computeJointJacobians(reduced_model, reduced_data, q)
         kkt_constraint.compute(
@@ -289,7 +298,7 @@ def ForwardK(
         dy = dz[:constraint_dim]
         dq = dz[constraint_dim:]
 
- 
+
         q = pin.integrate(reduced_model, q, -alpha * dq)
         y -= alpha * (-dy + y)
 
@@ -313,7 +322,7 @@ def ForwardK1(
     mu=1e-4,
 ):
     Lid = actuation_model.idMotJoints
- 
+
     Lid_q = actuation_model.idqmot
     q_prec2 = np.delete(q_prec, Lid, axis=0)
     model2 = model.copy()
@@ -325,8 +334,8 @@ def ForwardK1(
     collision_model,
     Lid,
     q_prec,
-)
- 
+    )
+
     reduced_data = reduced_model.createData()
     data = model.createData()
     reduced_constraint_data = [c.createData() for c in reduced_constraint_models]
@@ -350,5 +359,5 @@ def ForwardK1(
         rho=1e-8,
         mu=1e-3
     )
- 
+
     return q_ooo

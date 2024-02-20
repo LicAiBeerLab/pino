@@ -17,8 +17,8 @@ from pinokla.closed_loop_kinematics import closedLoopProximalMount
 from pinokla.closed_loop_jacobian import inverseConstraintKinematicsSpeed,dq_dqmot
 
 ## Load robot
-
-path_to_robot=os.getcwd() + "/robots/kangaroo_new_model"
+ 
+path_to_robot=os.getcwd() + "/robots/kangaroo_like"
 name_yaml='robot.yaml'
 name_urdf='robot.urdf'
 
@@ -31,7 +31,7 @@ data = model.createData()
 ## Visualizer
 
 viz = MeshcatVisualizer(model, visual_model, visual_model)
-viz.viewer = meshcat.Visualizer(zmq_url="tcp://127.0.0.1:6000") 
+viz.viewer = meshcat.Visualizer().open()
 viz.clean()
 viz.loadViewerModel()
 

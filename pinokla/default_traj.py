@@ -23,24 +23,24 @@ def simple_traj_derivative(traj_6d: np.ndarray, dt : float = 0.001):
     
 def get_simple_spline():
     # Sample data points
-    x = np.array([0.6, 0.7, 0.8, 0.95, 1.0, 1.05])
-    y = np.array([0.9, 0.85, 0.9, 0.8, 0.7, 0.6])
+    x = np.array([0.6, 0.65, 0.7, 0.75, 0.8])
+    y = np.array([0.9, 0.9, 0.9, 0.9, 0.9])
 
     # Create the cubic spline interpolator
     cs = CubicSpline(x, y)
 
     # Create a dense set of points where we evaluate the spline
-    x_traj_spline = np.linspace(x.min(), x.max(), 2000)
+    x_traj_spline = np.linspace(x.min(), x.max(), 100)
     y_traj_spline = cs(x_traj_spline)
 
     # Plot the original data points
-    plt.plot(x, y, 'o', label='data points')
+    #plt.plot(x, y, 'o', label='data points')
 
     # Plot the spline interpolation
-    plt.plot(x_traj_spline, y_traj_spline, label='cubic spline')
+    #plt.plot(x_traj_spline, y_traj_spline, label='cubic spline')
 
-    plt.legend()
-    plt.show()
+    #plt.legend()
+    #plt.show()
     return (x_traj_spline, y_traj_spline)
 
 

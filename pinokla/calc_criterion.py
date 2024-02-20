@@ -11,9 +11,9 @@ from pinokla.closed_loop_kinematics import ForwardK
 def kinematic_test(
     model, data, constraint_models, constraint_data, actuation_model, end_effector_frame: str, base_frame, traj_6d: np.ndarray, traj_6d_v: np.ndarray, q_start, viz=None
 ):
-    DT = 1e-4
+    DT = 1e-3
     Kp = 10
-    Kd = 1
+    Kd = 2
     q = q_start
     ee_frame_id = model.getFrameId(end_effector_frame)
     id_base = model.getFrameId(base_frame)
