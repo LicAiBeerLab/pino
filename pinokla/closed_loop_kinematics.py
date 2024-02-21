@@ -24,6 +24,7 @@ def closedLoopInverseKinematicsProximal(
     ideff,
     q_start = None,
     onlytranslation=False,
+    
     max_it=500,
     eps=1e-11,
     rho=1e-10,
@@ -126,9 +127,9 @@ def closedLoopInverseKinematicsProximal(
         y -= alpha * (-dy + y)
     
     pin.framesForwardKinematics(model, data, q)
-    id_frame = model.getFrameId("link5_psedo")
-    pos_e = np.linalg.norm(data.oMf[id_frame].translation -
-                        np.array(target_pos[0:3]))
+ 
+    # pos_e = np.linalg.norm(data.oMf[id_frame].translation -
+    #                     np.array(target_pos[0:3]))
     min_feas = primal_feas
     if not is_reach:
         for_sort = np.column_stack((primal_feas_array, q_array))
@@ -138,9 +139,8 @@ def closedLoopInverseKinematicsProximal(
         q = finish_q
         min_feas = for_sort[0][0]
         pin.framesForwardKinematics(model, data, q)
-        pos_e = np.linalg.norm(data.oMf[id_frame].translation -
-                    np.array(target_pos[0:3]))
-    return q, min_feas, pos_e
+ 
+    return q, min_feas
 
 
 def closedLoopProximalMount(

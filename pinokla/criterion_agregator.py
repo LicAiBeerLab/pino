@@ -124,7 +124,7 @@ def calc_traj_error(urdf_str: str,
     traj_6d = convert_x_y_to_6d_traj_xz(x_traj, y_traj)
     pos_errors, q_array, traj_force_cap, traj_foot_inertia, traj_manipulability, traj_IMF = calc_reward_wrapper(
         urdf_str, joint_des, loop_des, traj_6d)
-    res = sum(pos_errors)
+    res = np.linalg.norm(sum(pos_errors))
     return res
 
 

@@ -20,7 +20,7 @@ def folow_traj_by_proximal_inv_k(model, data, constraint_models, constraint_data
     constraint_errors = np.zeros((len(traj_6d), 1))
 
     for num, i_pos in enumerate(traj_6d):
-        q, min_feas, pos_e = closedLoopInverseKinematicsProximal(
+        q, min_feas = closedLoopInverseKinematicsProximal(
             model,
             data,
             constraint_models,

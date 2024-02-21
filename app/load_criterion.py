@@ -19,18 +19,14 @@ import os
 from scipy.spatial import ConvexHull
 from pathlib import Path
 
-DIR_NAME_FOR_LOAD = "result"
+DIR_NAME_FOR_LOAD = "handsome"
 file_list = os.listdir(DIR_NAME_FOR_LOAD)
 handsome_guys = []
 new_list = [Path(DIR_NAME_FOR_LOAD + "/" + str(item)) for item in file_list]
-for path_i in new_list:
-    res1 = load_criterion_traj(path_i)
-    available_q = res1["available_q"]
-    if len(available_q) / (100 * 100) > 0.5:
-        handsome_guys.append(res1)
+ 
 
 
-for num, res_i in enumerate(handsome_guys[23:]):
+for num, res_i in enumerate(handsome_guys):
 
     select_meh = res_i
     workspace_xyz = select_meh["workspace_xyz"]
