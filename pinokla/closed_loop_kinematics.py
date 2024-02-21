@@ -22,11 +22,12 @@ def closedLoopInverseKinematicsProximal(
     rconstraint_data,
     target_pos,
     ideff,
+    q_start = None,
     onlytranslation=False,
-    max_it=250,
-    eps=1e-12,
+    max_it=500,
+    eps=1e-11,
     rho=1e-10,
-    mu=1e-4,
+    mu=1e-3,
 ):
     """
     q=inverseGeomProximalSolver(rmodel,rdata,rconstraint_model,rconstraint_data,idframe,pos,only_translation=False,max_it=100,eps=1e-12,rho=1e-10,mu=1e-4)
@@ -51,7 +52,7 @@ def closedLoopInverseKinematicsProximal(
 
     raw here (L84-126):https://gitlab.inria.fr/jucarpen/pinocchio/-/blob/pinocchio-3x/examples/simulation-closed-kinematic-chains.py
     """
-
+    
     model = pin.Model(rmodel)
     constraint_model = [pin.RigidConstraintModel(x) for x in  rconstraint_model]
     # add a contact constraint
@@ -64,7 +65,7 @@ def closedLoopInverseKinematicsProximal(
         final_constraint = pin.RigidConstraintModel(pin.ContactType.CONTACT_3D,
                                                     model, parent_joint,
                                                     placement, 0, target_SE3,
-                                                    pin.ReferenceFrame.WORLD)
+                                                    pin.ReferenceFrame.LOCAL)
     else:
         final_constraint = pin.RigidConstraintModel(
             pin.ContactType.CONTACT_6D, model, parent_joint, placement,
@@ -76,15 +77,19 @@ def closedLoopInverseKinematicsProximal(
     constraint_data = [cm.createData() for cm in constraint_model]
 
     # proximal solver (black magic)
-    q = pin.neutral(model)
+    if q_start is None:
+        q = pin.neutral(model)
+    else:
+        q = q_start
     constraint_dim = 0
     for cm in constraint_model:
         constraint_dim += cm.size()
-
+    is_reach = False
     y = np.ones((constraint_dim))
     data.M = np.eye(model.nv) * rho
     kkt_constraint = pin.ContactCholeskyDecomposition(model, constraint_model)
-
+    primal_feas_array = np.zeros(max_it)
+    q_array = np.zeros((max_it, len(q)))
     for k in range(max_it):
         pin.computeJointJacobians(model, data, q)
         kkt_constraint.compute(model, data, constraint_model, constraint_data,
@@ -102,10 +107,13 @@ def closedLoopInverseKinematicsProximal(
         J = np.concatenate(LJ)
 
         primal_feas = np.linalg.norm(constraint_value, np.inf)
-
+        primal_feas_array[k] = primal_feas
+        q_array[k] = q
         dual_feas = np.linalg.norm(J.T.dot(constraint_value + y), np.inf)
         if primal_feas < eps and dual_feas < eps:
+            is_reach = True
             break
+            
 
         rhs = np.concatenate([-constraint_value - y * mu, np.zeros(model.nv)])
 
@@ -116,12 +124,23 @@ def closedLoopInverseKinematicsProximal(
         alpha = 0.5
         q = pin.integrate(model, q, -alpha * dq)
         y -= alpha * (-dy + y)
+    
+    pin.framesForwardKinematics(model, data, q)
+    id_frame = model.getFrameId("link5_psedo")
+    pos_e = np.linalg.norm(data.oMf[id_frame].translation -
+                        np.array(target_pos[0:3]))
+    min_feas = primal_feas
+    if not is_reach:
+        for_sort = np.column_stack((primal_feas_array, q_array))
+        key_sort = lambda x: x[0]
+        for_sort = sorted(for_sort, key=key_sort)
+        finish_q = for_sort[0][1:]
+        q = finish_q
+        min_feas = for_sort[0][0]
         pin.framesForwardKinematics(model, data, q)
-        id_frame = model.getFrameId("link5_psedo")
         pos_e = np.linalg.norm(data.oMf[id_frame].translation -
-                               np.array(target_pos[0:3]))
-        print(pos_e)
-    return q
+                    np.array(target_pos[0:3]))
+    return q, min_feas, pos_e
 
 
 def closedLoopProximalMount(
