@@ -4,16 +4,50 @@ import pinocchio as pin
 from numpy.linalg import norm
 import numpy as np
 
-from pinokla.closed_loop_jacobian import dq_dqmot, inverseConstraintKinematicsSpeed
+from pinokla.closed_loop_jacobian import dq_dqmot, inverseConstraintKinematicsSpeed, closedLoopInverseKinematicsProximal
 from pinokla.closed_loop_kinematics import ForwardK
+
+
+def folow_traj_by_proximal_inv_k(model, data, constraint_models, constraint_data, end_effector_frame: str,  traj_6d: np.ndarray, viz = None, q_start: np.ndarray = None):
+    if q_start:
+        q = q_start
+    else:
+        q = pin.neutral(model)
+    
+    ee_frame_id = model.getFrameId(end_effector_frame)
+    poses = np.zeros((len(traj_6d), 3))
+    q_array = np.zeros((len(traj_6d), len(q)))
+    constraint_errors = np.zeros((len(traj_6d), 1))
+
+    for num, i_pos in enumerate(traj_6d):
+        q, min_feas = closedLoopInverseKinematicsProximal(
+            model,
+            data,
+            constraint_models,
+            constraint_data,
+            i_pos,
+            ee_frame_id,
+            onlytranslation=True,
+            q_start = q
+        )
+        if viz:
+            viz.display(q)
+            time.sleep(0.01)
+        
+        pin.framesForwardKinematics(model, data, q)
+        poses[num] = data.oMf[ee_frame_id].translation
+        q_array[num] = q
+        constraint_errors[num] = min_feas
+
+    return poses, q_array, constraint_errors
 
 
 def kinematic_test(
     model, data, constraint_models, constraint_data, actuation_model, end_effector_frame: str, base_frame, traj_6d: np.ndarray, traj_6d_v: np.ndarray, q_start, viz=None
 ):
-    DT = 1e-4
-    Kp = 10
-    Kd = 1
+    DT = 1e-3
+    Kp = 1
+    Kd = 0
     q = q_start
     ee_frame_id = model.getFrameId(end_effector_frame)
     id_base = model.getFrameId(base_frame)
@@ -41,8 +75,12 @@ def kinematic_test(
         old_pos_ee = pos_ee.copy()
 
         va = Kp*(target_ee_pos-pos_ee) + Kd*(target_ee_v-vreel)
+        tareget_speed = data.oMf[ee_frame_id].action@va
+        #tareget_speed[0] = -tareget_speed[0]
+        #tareget_speed[1] = -tareget_speed[1]
+        #tareget_speed[5] = -0.9*tareget_speed[5]
         vq, Jf36_closed = inverseConstraintKinematicsSpeed(
-            model, data, constraint_models, constraint_data, actuation_model, q, ee_frame_id, data.oMf[ee_frame_id].action@va)
+            model, data, constraint_models, constraint_data, actuation_model, q, ee_frame_id, tareget_speed)
         q = pin.integrate(model, q, vq * DT)
         pin.framesForwardKinematics(model, data, q)
         pin.computeAllTerms(model, data, q, vq)
@@ -67,8 +105,8 @@ def set_end_effector(model,
                      viz=None):
     if not only_trans:
         raise ("Rotation not implemented")
-    Kp = 10
-    Kd = 1
+    Kp = 50
+    Kd = 0
     DT = 0.001
     QUALITY = 0.04
     id_ee = model.getFrameId(frame_name_ee)
@@ -85,7 +123,7 @@ def set_end_effector(model,
         ee_coord_trans_in_base = ee_coord_trans - base_coord_trans
         ee_coord_in_base = np.concatenate(
             (ee_coord_trans_in_base, pin.log(data.oMf[id_ee]).angular))
-
+ 
         prev_error = error
         error = target_6d - ee_coord_in_base
         # vreel = target_6d - oldpos_t
