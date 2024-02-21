@@ -24,7 +24,7 @@ DIR_NAME_FOR_LOAD = "handsome"
 file_list = os.listdir(DIR_NAME_FOR_LOAD)
 
 new_list = [Path(DIR_NAME_FOR_LOAD + "/" + str(item)) for item in file_list]
-get_simple_spline
+
 for num, path_i in enumerate(new_list):
     res_i = load_criterion_traj(path_i)
     urdf_i = str(res_i["urdf"])
