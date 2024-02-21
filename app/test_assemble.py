@@ -5,7 +5,7 @@ import odio_urdf
 from pinokla.closed_loop_kinematics import ForwardK, ForwardK1, closedLoopInverseKinematicsProximal, closedLoopProximalMount
 from pinokla.default_traj import get_simple_spline, convert_x_y_to_6d_traj, simple_traj_derivative
 from pinokla.loader_tools import completeRobotLoader, completeRobotLoaderFromStr
-from pinokla.calc_criterion import calc_force_ell_along_trj_trans, kinematic_simulation, search_workspace, set_end_effector, kinematic_test
+from pinokla.calc_criterion import calc_force_ell_along_trj_trans, folow_traj_by_proximal_inv_k, kinematic_simulation, search_workspace, set_end_effector, kinematic_test
 from pinocchio.visualize import MeshcatVisualizer
 import meshcat
 import os
@@ -82,7 +82,7 @@ q0 = closedLoopProximalMount(
     constraint_data,
     actuation_model,
     np.array([np.pi / 2, 0, 0, -np.pi / 2, 0], dtype=np.float64),
-    max_it=10,
+    max_it=100,
 )
 
 # q3, error = ForwardK(
@@ -93,11 +93,11 @@ q0 = closedLoopProximalMount(
 #     100,
 # )
 
-# viz = MeshcatVisualizer(model, visual_mode, visual_mode)
-# idpied = model.getFrameId("link6_psedo")
-# viz.viewer = meshcat.Visualizer().open()
-# viz.clean()
-# viz.loadViewerModel()
+viz = MeshcatVisualizer(model, visual_mode, visual_mode)
+idpied = model.getFrameId("link6_psedo")
+viz.viewer = meshcat.Visualizer().open()
+viz.clean()
+viz.loadViewerModel()
 
 # pin.framesForwardKinematics(model, data, q0)
 # pin.computeAllTerms(
@@ -151,7 +151,7 @@ traj_6d = convert_x_y_to_6d_traj(x_traj, y_traj)
 traj_6d_v = simple_traj_derivative(traj_6d, 0.001)
 id_ee = model.getFrameId(EFFECTOR_NAME)
 
-qqq1 = closedLoopInverseKinematicsProximal(
+qqq1, min_feas, pos_e = closedLoopInverseKinematicsProximal(
     model,
     data,
     constraint_models,
@@ -162,24 +162,25 @@ qqq1 = closedLoopInverseKinematicsProximal(
     onlytranslation=True,
 )
 
-viz = MeshcatVisualizer(model, visual_mode, visual_mode)
+ 
 idpied = model.getFrameId("link6_psedo")
-viz.viewer = meshcat.Visualizer().open()
-viz.clean()
-viz.loadViewerModel()
+
+
+
+poses, _, _ = folow_traj_by_proximal_inv_k(model, data, constraint_models, constraint_data, EFFECTOR_NAME, traj_6d, viz)
+ 
 viz.display(qqq1)
-poses = []
-poses = np.zeros((len(traj_6d), 3))
+# poses = np.zeros((len(traj_6d), 3))
 # for num, i_pos in enumerate(traj_6d):
-#     qqq1 = closedLoopInverseKinematicsProximal(
+#     qqq1, min_feas, pos_e = closedLoopInverseKinematicsProximal(
 #         model,
 #         data,
 #         constraint_models,
 #         constraint_data,
-#         #np.array([1.0, 0.6, 0, 0, 0, 0], dtype=np.float64),
 #         i_pos,
 #         id_ee,
 #         onlytranslation=True,
+#         q_start = qqq1
 #     )
 #     viz.display(qqq1)
 #     time.sleep(0.01)
@@ -191,16 +192,17 @@ poses = np.zeros((len(traj_6d), 3))
 
 
 poses = np.array(poses)
-res_traj = kinematic_test(model, data, constraint_models, constraint_data,
-               actuation_model, EFFECTOR_NAME, BASE_FRAME ,traj_6d, traj_6d_v, qqq1, viz)
+# qq = set_end_effector(model, data, constraint_models, constraint_data, actuation_model, traj_6d[0], BASE_FRAME, EFFECTOR_NAME, q0 )
+# res_traj = kinematic_test(model, data, constraint_models, constraint_data,
+#                actuation_model, EFFECTOR_NAME, BASE_FRAME ,traj_6d, traj_6d_v, qqq1)
 # q_space_mot_1 = np.linspace(-np.pi , np.pi , 50)
 # q_space_mot_2 = np.linspace(-np.pi  , np.pi , 50)
 # q_mot_double_space = list(product(q_space_mot_1, q_space_mot_2))
 # workspace_xyz, available_q = search_workspace(model, data, EFFECTOR_NAME, BASE_FRAME, np.array(q_mot_double_space), actuation_model, constraint_models)
 # traj_M, traj_J_closed, traj_dq = kinematic_simulation(model, data, actuation_model, constraint_models, constraint_data, EFFECTOR_NAME, BASE_FRAME, available_q, False)
 # traj_force_cap = calc_force_ell_along_trj_trans(traj_J_closed)
-
-plt.scatter(res_traj[:,0],  res_traj[:,1])
-plt.scatter(x_traj,  y_traj)
+plt.figure()
+plt.scatter(poses[:,0],  poses[:,1], marker = "d")
+plt.scatter(x_traj,  y_traj, marker = ".")
 plt.show()
 pass

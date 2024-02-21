@@ -5,8 +5,9 @@ import time
 from typing import NamedTuple
 import odio_urdf
 from pinokla.closed_loop_kinematics import ForwardK, ForwardK1, closedLoopProximalMount
+from pinokla.default_traj import convert_x_y_to_6d_traj, convert_x_y_to_6d_traj_xz, get_simple_spline
 from pinokla.loader_tools import build_model_with_extensions, Robot, completeRobotLoader, completeRobotLoaderFromStr
-from pinokla.calc_criterion import calc_IMF_along_traj, calc_foot_inertia_along_traj, calc_force_ell_along_trj_trans, calc_manipulability_along_trj, calc_manipulability_along_trj_trans, kinematic_simulation, search_workspace, set_end_effector
+from pinokla.calc_criterion import calc_IMF_along_traj, calc_foot_inertia_along_traj, calc_force_ell_along_trj_trans, calc_manipulability_along_trj, calc_manipulability_along_trj_trans, folow_traj_by_proximal_inv_k, kinematic_simulation, search_workspace, set_end_effector
 from pinocchio.visualize import MeshcatVisualizer
 import meshcat
 import os
@@ -83,14 +84,58 @@ def calc_criterion_on_workspace(robo: Robot, robo_free: Robot, base_frame_name: 
     return workspace_xyz, available_q, traj_force_cap, traj_foot_inertia, traj_manipulability, traj_IMF
 
 
+def calc_criterion_along_traj(robo: Robot, robo_free: Robot, base_frame_name: str, ee_frame_name: str, traj_6d: np.ndarray, cmp_cfg: ComputeConfg = ComputeConfg()):
+
+    poses_3d, q_array, constraint_errors = folow_traj_by_proximal_inv_k(
+        robo.model, robo.data, robo.constraint_models, robo.constraint_data, ee_frame_name, traj_6d)
+    pos_errors = traj_6d[:, :3] - poses_3d
+    # pos_error_sum = sum(map(np.linalg.norm, pos_errors))
+    try:
+        traj_force_cap, traj_foot_inertia, traj_manipulability, traj_IMF = compute_along_q_space(
+            robo, robo_free, base_frame_name, ee_frame_name, q_array, cmp_cfg)
+    except:
+        traj_force_cap, traj_foot_inertia, traj_manipulability, traj_IMF = None, None, None, None
+
+    return pos_errors, q_array, traj_force_cap, traj_foot_inertia, traj_manipulability, traj_IMF
+
+
+def calc_reward_wrapper(urdf_str: str,
+                        joint_des: dict,
+                        loop_des: dict,
+                        traj_6d: np.ndarray,
+                        cmp_cfg: ComputeConfg = ComputeConfg(),
+                        base_frame_name="G",
+                        ee_frame_name="EE"):
+    robo = build_model_with_extensions(urdf_str, joint_des, loop_des)
+    free_robo = build_model_with_extensions(urdf_str, joint_des, loop_des,
+                                            False)
+
+    pos_errors, q_array, traj_force_cap, traj_foot_inertia, traj_manipulability, traj_IMF = calc_criterion_along_traj(
+        robo, free_robo, base_frame_name, ee_frame_name, traj_6d, cmp_cfg)
+
+    return pos_errors, q_array, traj_force_cap, traj_foot_inertia, traj_manipulability, traj_IMF
+
+
+def calc_traj_error(urdf_str: str,
+                    joint_des: dict,
+                    loop_des: dict):
+    cmp_cfg = ComputeConfg(False, False, False, False)
+    x_traj, y_traj = get_simple_spline()
+    traj_6d = convert_x_y_to_6d_traj_xz(x_traj, y_traj)
+    pos_errors, q_array, traj_force_cap, traj_foot_inertia, traj_manipulability, traj_IMF = calc_reward_wrapper(
+        urdf_str, joint_des, loop_des, traj_6d)
+    res = sum(pos_errors)
+    return res
+
+
 def calc_criterion_on_workspace_simple_input(
-    urdf_str: str,
-    joint_des: dict,
-    loop_des: dict,
-    base_frame_name: str,
-    ee_frame_name: str,
-    lin_space_num: int,
-    cmp_cfg: ComputeConfg = ComputeConfg()):
+        urdf_str: str,
+        joint_des: dict,
+        loop_des: dict,
+        base_frame_name: str,
+        ee_frame_name: str,
+        lin_space_num: int,
+        cmp_cfg: ComputeConfg = ComputeConfg()):
     try:
         robo = build_model_with_extensions(urdf_str, joint_des, loop_des)
         free_robo = build_model_with_extensions(urdf_str, joint_des, loop_des,
@@ -112,7 +157,7 @@ def calc_criterion_on_workspace_simple_input(
             "traj_IMF": traj_IMF
         }
 
-        coverage = len(available_q) / (lin_space_num * lin_space_num) 
+        coverage = len(available_q) / (lin_space_num * lin_space_num)
         if coverage > 0.5:
             print("Greate mech heare!")
     except:
